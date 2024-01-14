@@ -1,0 +1,292 @@
+install.packages("coxme")
+install.packages("lme4")
+install.packages("car")
+install.packages("MASS")
+install.packages("metafor")
+install.packages("meta")
+install.packages("ggplot2")
+
+library(survival)
+library(coxme)
+library(lme4)
+library(car)
+library(MASS)
+library(metafor)
+library(meta)
+library(ggplot2)
+
+meta_data<-read.csv("ovarian.csv")
+colnames(Meta_analysis_dataset)
+attach(Meta_analysis_dataset)
+## normal distribution
+qqp(Age_at_diagnosis, "norm")
+
+colSums(is.na(Meta_analysis_dataset))
+
+
+qqp(Age_at_diagnosis, "norm")
+qqp(Age_at_diagnosis, "lnorm")
+hist(Meta_analysis_dataset$Age_at_diagnosis)
+
+
+
+# lnorm means lognormal distribution
+
+severe_data <- subset(Meta_analysis_dataset, Severe_disease == 1)
+not_severe_data <- subset(Meta_analysis_dataset, Severe_disease == 0)
+
+severe_plot <- ggplot(severe_data, aes(x = Age_at_diagnosis)) + 
+  geom_density(fill = "blue", alpha = 0.2) +
+  ggtitle("Age of diagnosis for severe disease")
+
+severe_plot
+
+not_severe_plot <- ggplot(not_severe_data, aes(x = Age_at_diagnosis)) + 
+  geom_density(fill = "green", alpha = 0.2) +
+  ggtitle("Age of diagnosis for non-severe disease")
+
+
+not_severe_plot
+
+combo <- severe_plot + not_severe_plot
+
+## linear mixed model
+?lmer
+model_linear=lmer(as.factor(Severe_disease) ~Age_at_diagnosis +(1|Cohort), data=Meta_analysis_dataset)
+
+
+model_linear = glmer(as.factor(Severe_disease) ~ Age_at_diagnosis + (1 | Cohort), family = binomial(link = "logit"), data = Meta_analysis_dataset)
+summary(model_linear)
+Anova(model_linear)
+confint(model_linear)
+
+
+
+model_linear_OS = glmer(as.factor(Severe_disease) ~ OS + (1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_OS)
+
+model_linear_EGFR = glmer(as.factor(Severe_disease) ~ EGFR_Mutation_type+ (1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_EGFR)
+
+model_linear_BRAF = glmer(as.factor(Severe_disease) ~ BRAF_mutation + (1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_BRAF)
+
+model_linear_KRAS = glmer(as.factor(Severe_disease) ~ KRAS_mutation + (1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_KRAS)
+
+model_linear_sex = glmer(as.factor(Severe_disease) ~ Sex + (1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_sex)
+
+model_linear_eth = glmer(as.factor(Severe_disease) ~ as.factor(Ethnicity) + (1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_eth)
+
+
+model_linear_eve = glmer(as.factor(Severe_disease) ~ OS_event + (1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_eve)
+
+
+age_data <- severe_data <- subset(Meta_analysis_dataset, Cohort != 3)
+
+model_linear_2 = glmer(as.factor(Severe_disease) ~ Age_at_diagnosis + (1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_2)
+Anova(model_linear_2)
+confint(model_linear_2)
+
+
+model_linear_m = glmer(as.factor(Severe_disease) ~ Age_at_diagnosis + KRAS_mutation + BRAF_mutation + EGFR_Mutation_type +(1 | Cohort), family = binomial, data = Meta_analysis_dataset)
+summary(model_linear_m)
+
+## check heterogeneity 
+age_data$Cohort=ifelse(age_data$Cohort==4,3,age_data$Cohort)
+age_data$Cohort=ifelse(age_data$Cohort==5,4,age_data$Cohort)
+age_data$Cohort=ifelse(age_data$Cohort==6,5,age_data$Cohort)
+attach(age_data)
+detach(Meta_analysis_dataset)
+detach(newdata)
+detach(age_data)
+
+
+x<-matrix(0,5,2)
+a<-1
+while(a<6)
+{
+  x[a,1]<-summary(glm(Severe_disease[which(Cohort == a)] ~ Age_at_diagnosis[which(Cohort == a)], data=age_data))$coefficients[2,1]
+  x[a,2]<-summary(glm(Severe_disease[which(Cohort == a)] ~ Age_at_diagnosis[which(Cohort == a)], data=age_data))$coefficients[2,2]
+  a<-a+1
+}
+rma(x[,1], sei=x[,2], data=x)
+x
+attach(age_data)
+glm(Severe_disease[which(Cohort == 1)] ~ Age_at_diagnosis[which(Cohort == 1)], data=age_data)
+which(x[,2] <= 0)
+age_data
+
+#attach this temporary data then reattach the old data set 
+attach(age_data)
+x<-matrix(0,6,2)
+a<-1
+while(a<7)
+{
+  x[a,1]<-summary(glm(Age_at_diagnosis[which(Cohort == a)] ~ as.factor(Severe_disease[which(Cohort == a)]), data=newdata))$coefficients[2,1]
+  x[a,2]<-summary(glm(Age_at_diagnosis[which(Cohort == a)] ~ as.factor(Severe_disease[which(Cohort == a)]), data=newdata))$coefficients[2,2]
+  a<-a+1
+}
+
+rma(x[,1], sei=x[,2], data=x)
+
+newdata <- Meta_analysis_dataset[!is.na(Meta_analysis_dataset$Age_at_diagnosis), ]
+
+attach(Meta_analysis_dataset)
+
+
+## logistic mixed model
+model_logistic<-glmer(BRCA1_methylated ~ age+(1|cohort), family=binomial(link="logit"), data=meta_data)
+summary(model_logistic)
+confint(model_logistic)
+
+## check for heterogeneity
+x<-matrix(0,10,2)
+a<-1
+while(a<11)
+{
+  x[a,1]<-summary(glm(BRCA1_methylated[which(cohort == a)] ~ age[which(cohort == a)] ,family=binomial, data=meta_data))$coefficients[2,1]
+  x[a,2]<-summary(glm(BRCA1_methylated[which(cohort == a)]  ~ age[which(cohort == a)] ,family=binomial, data=meta_data))$coefficients[2,2]
+  a<-a+1
+}
+rma(x[,1], sei=x[,2], data=x)
+
+
+### function for generating confidence intervals for mixed model cox regression data
+confint.coxme<-function(object, parm=NULL, level=0.95, ..., more=FALSE){
+  if(!is.null(parm)) warning("[confint.coxme] argument 'parm' doesn't do anything for this method")
+  if(level != 0.95) warning("[confint.coxme] 'level' will be 0.95 regardless of what argument you give it. Ha!")
+  co <- object$coef
+  se <- sqrt(diag(stats::vcov(object)))
+  m <- matrix(c(co - 2*se, co + 2*se), ncol=2)
+  colnames(m) <- c("2.5 %", "97.5 %")
+  rownames(m) <- names(co)
+  if(more){
+    p <- 2*stats::pnorm(abs(co/se), lower.tail=F)
+    m <- cbind(m, co, p)
+    rownames(m)[3:4] <- c("coef", "p")
+  }
+  return (m)
+}
+model1<-coxph(Surv(OS,OS_cens)~BRCA1_methylated+frailty(cohort),data=meta_data)
+summary(model1)
+
+model2<-coxme(Surv(OS,OS_cens)~BRCA1_methylated+(1|cohort),data=meta_data)
+summary(model2)
+exp(confint.coxme(model2))
+
+### test for heterogeneity ###
+x<-matrix(0,10,5)
+a<-1
+while(a<11)
+{
+  x[a,1]<-summary(coxph(Surv(OS[which(cohort == a)],OS_cens[which(cohort == a)])~BRCA1_methylated[which(cohort == a)],data=meta_data))$coefficients[1]
+  x[a,2]<-summary(coxph(Surv(OS[which(cohort == a)],OS_cens[which(cohort == a)])~BRCA1_methylated[which(cohort == a)],data=meta_data))$coefficients[3]
+  x[a,3]<-summary(coxph(Surv(OS[which(cohort == a)],OS_cens[which(cohort == a)])~BRCA1_methylated[which(cohort == a)],data=meta_data))$conf.int[1]
+  x[a,4]<-summary(coxph(Surv(OS[which(cohort == a)],OS_cens[which(cohort == a)])~BRCA1_methylated[which(cohort == a)],data=meta_data))$conf.int[3]
+  x[a,5]<-summary(coxph(Surv(OS[which(cohort == a)],OS_cens[which(cohort == a)])~BRCA1_methylated[which(cohort == a)],data=meta_data))$conf.int[4]
+  a<-a+1
+}
+
+hetero_test<-metagen(x[,1],x[,2],method.tau.ci="QP")
+summary(hetero_test)
+hetero_test
+
+### generate the forest plot
+colnames(x)<-c("LOG(HR)","SE(LOG(HR))","HR","CI:2.5","CI:97.5")
+
+y<-c(0,0,as.matrix(exp(summary(model2)$coefficients)),exp(confint.coxme(model2)))
+z<-rbind(x,y)
+row.names(z)<-c("study 1","study 2","study 3","study 4","study 5","study 6","study 7","study 8","study 9","study 10","Total")
+
+ggplot(data=as.data.frame(z), aes(y=1:11, x=HR,
+                                  xmin=z[,4], 
+                                  xmax=z[,5])) +
+  geom_point() + 
+  geom_errorbarh(height=.1) +
+  labs(title='BRAC1 Forest Plot', x='Hazard Ratio', y = 'Cohort') +
+  geom_vline(xintercept=1, color='red', linetype='dashed', alpha=.8) +
+  scale_y_continuous(breaks=1:nrow(z),labels=row.names(z))
+
+
+
+##Q2
+
+attach(Meta_analysis_dataset)
+## normal distribution
+qqp(OS, "norm")
+hist(Meta_analysis_dataset$OS)
+
+model_linear=lmer(Surv(OS,OS_event) ~ BRAF_mutation+frailty(1|Cohort), data=Meta_analysis_dataset)
+summary(model_linear)
+Anova(model_linear)
+confint(model_linear)
+
+model1<-coxph(Surv(OS,OS_event)~BRAF_mutation+frailty(Cohort),data=Meta_analysis_dataset)
+summary(model1)
+exp(confint(model1))
+
+model2<-coxme(Surv(OS,OS_event)~BRAF_mutation+(1|Cohort),data=Meta_analysis_dataset)
+summary(model2)
+exp(confint(model2))
+
+model3<-coxph(Surv(OS,OS_event)~EGFR_Mutation_type+frailty(Cohort),data=Meta_analysis_dataset)
+summary(model3)
+Anova(model3)
+
+model4<-coxph(Surv(OS,OS_event)~Age_at_diagnosis+frailty(Cohort),data=Meta_analysis_dataset)
+summary(model4)
+Anova(model4)
+
+model5<-coxph(Surv(OS,OS_event)~KRAS_mutation+frailty(Cohort),data=Meta_analysis_dataset)
+summary(model5)
+Anova(model5)
+
+model6<-coxph(Surv(OS,OS_event)~Severe_disease+frailty(Cohort),data=Meta_analysis_dataset)
+summary(model6)
+Anova(model6)
+
+
+
+
+model7<-coxph(Surv(OS,OS_event)~BRAF_mutation +  KRAS_mutation + EGFR_Mutation_type +frailty(Cohort),data=Meta_analysis_dataset)
+summary(model7)
+exp(confint(model1))
+
+x<-matrix(0,6,5)
+a<-1
+while(a<7)
+{
+  x[a,1]<-summary(coxph(Surv(OS[which(Cohort == a)],OS_event[which(Cohort == a)])~BRAF_mutation[which(Cohort == a)],data=Meta_analysis_dataset))$coefficients[1]
+  x[a,2]<-summary(coxph(Surv(OS[which(Cohort == a)],OS_event[which(Cohort == a)])~BRAF_mutation[which(Cohort == a)],data=Meta_analysis_dataset))$coefficients[3]
+  x[a,3]<-summary(coxph(Surv(OS[which(Cohort == a)],OS_event[which(Cohort == a)])~BRAF_mutation[which(Cohort == a)],data=Meta_analysis_dataset))$conf.int[1]
+  x[a,4]<-summary(coxph(Surv(OS[which(Cohort == a)],OS_event[which(Cohort == a)])~BRAF_mutation[which(Cohort == a)],data=Meta_analysis_dataset))$conf.int[3]
+  x[a,5]<-summary(coxph(Surv(OS[which(Cohort == a)],OS_event[which(Cohort == a)])~BRAF_mutation[which(Cohort == a)],data=Meta_analysis_dataset))$conf.int[4]
+  a<-a+1
+}
+
+x
+
+hetero_test<-metagen(x[,1],x[,2],method.tau.ci="QP")
+summary(hetero_test)
+hetero_test
+
+
+colnames(x)<-c("LOG(HR)","SE(LOG(HR))","HR","CI:2.5","CI:97.5")
+
+y<-c(0,0,as.matrix(exp(summary(model2)$coefficients)),exp(confint.coxme(model2)))
+z<-rbind(x,y)
+row.names(z)<-c("study 1","study 2","study 3","study 4","study 5","study 6","Total")
+
+ggplot(data=as.data.frame(z), aes(y=1:7, x=HR,
+                                  xmin=z[,4], 
+                                  xmax=z[,5])) +
+  geom_point() + 
+  geom_errorbarh(height=.1) +
+  labs(title='BRAF Forest Plot', x='Hazard Ratio', y = 'Cohort') +
+  geom_vline(xintercept=1, color='red', linetype='dashed', alpha=.8) +
+  scale_y_continuous(breaks=1:nrow(z),labels=row.names(z))

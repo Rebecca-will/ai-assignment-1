@@ -1,0 +1,159 @@
+# required
+library(stats) # preinstalled with R generally
+library(FactoMineR)
+library(factoextra)
+library(cluster)
+library(mclust)
+library(mlbench)
+library(randomForest)
+library(rpart)
+library(entropy)
+library(pROC)
+library(ggplot2)
+library(cluster)
+
+#optional
+library(randomForestSRC) 
+
+## hopefully this too
+library(entropy)
+
+###
+d1 = data.frame(x = rnorm(1000, 5, 1.8), y = rnorm(1000, 5, 2), type = 'A')
+d2 = data.frame(x = rnorm(500, 2, .2), y = rnorm(500, 9, .3), type = 'B')
+d3 = data.frame(x = rnorm(500, 9, .1), y = rnorm(500, 9, .3), type = 'C')
+D = rbind(d1, d2, d3)
+
+### mclust DR
+mc = Mclust(D[, -c(3)])
+dr = MclustDR(object = mc, lambda = 1, normalized = T)
+plot(dr) # check options 1, 5 for sure
+
+## mclust DA
+tidx = sample(x = 1:nrow(D), replace = F, size = nrow(D)*.75) #splitting data into train and test
+
+#check that proportions of type are similar in training an, thus in tesing
+table(D$type)
+table(D$type[tidx])
+
+da = MclustDA(D[tidx, -c(3)], class = D$type[tidx])
+summary(da)
+summary(da, newdata = D[-tidx, -c(3)], newclass = D$type[-tidx])
+
+
+#### Decision Trees
+library(rpart)
+model = rpart(as.factor(type) ~ ., data = (D[tidx, ]), method = 'class') # if its 0/1 and you dont say as factor it wil think its a number and do regression rather than classify it 
+
+par(xpd = T)
+plot(model)
+text(model, use.n = TRUE) # tells you how many of each is in each bucket 
+
+#predict and generate confusion table
+table(as.factor(D$type[-tidx]), predict(object = model, newdata = D[-tidx,], type = 'class'))
+# predict passing the model tidx- use all observations not in tidx. 
+#actual classes and prideiction tables. When A and A is found etc. if they are wrongly classifed the 1 was classified as an A but it was a B
+
+### try making it harder
+d1 = data.frame(x = rnorm(1000, 5, 3), y = rnorm(1000, 5, 3), type = 'A')
+D = rbind(d1, d2, d3)
+#increased the variance/SD which makes it harder for the tree.
+
+
+### RF
+rf = randomForest(as.factor(type) ~ ., data = (D[tidx, ]), nodesize = 25, ntree = 500)
+table(as.factor(D$type[-tidx]), predict(object = rf, newdata = D[-tidx,], type = 'class'))
+
+
+
+
+## clustering via proximity matrix
+rf = randomForest(D[, -c(3)], do.trace = T, proximity = T, nodesize = 250, ntree = 1000)
+distm = 1 - rf$proximity
+fviz_nbclust(x = D[, -c(3)], diss = as.dist(distm), hcut, method = "wss", hc_method = 'ward.D2')
+#tries to cluster with random forest 
+
+
+## PimaIndiansDiabetes
+data("PimaIndiansDiabetes")
+#make training sample
+tidx = sample(x = 1:nrow(PimaIndiansDiabetes), replace = F, size = nrow(PimaIndiansDiabetes)*.75)
+
+#you need to make sure the proportion of data is the same in the split and as we progress. n the training data and the actual part
+
+# check the balance of labels in both
+## actual overall balance of labels
+table(PimaIndiansDiabetes$diabetes)/sum(table(PimaIndiansDiabetes$diabetes))
+
+## make sure imbalance in training sample is the same
+table(PimaIndiansDiabetes$diabetes[tidx])/sum(table(PimaIndiansDiabetes$diabetes[tidx]))
+
+model = rpart::rpart(as.factor(diabetes) ~ ., data = (PimaIndiansDiabetes[tidx, ]), method = 'class')
+table(as.factor(PimaIndiansDiabetes$diabetes[-tidx]), predict(object = model, newdata = PimaIndiansDiabetes[-tidx, ], type = 'class')) #test confusion table
+table(as.factor(PimaIndiansDiabetes$diabetes[tidx]), predict(object = model, newdata = PimaIndiansDiabetes[tidx, ], type = 'class')) #train confusion table
+
+#if it is worse then your model is over fitting, if its better your model is good. Consistency is good.
+
+# View the tree
+par(xpd = T)
+plot(model)
+text(model, use.n = TRUE)
+
+rf = randomForest(as.factor(diabetes) ~ ., data = (PimaIndiansDiabetes[tidx, ]),nodesize = 20, ntree = 50, do.trace = F, mtry = 5 )
+#note the high error rate. try increasing ntree
+rf
+print(rf)
+#number of variables at each split nb- randomly samppling two variables to consider for a split. mtry= 5. get square root of number of columns, 9 in this square root is 3. 
+
+
+## work with class weights
+#first compute how much should one weigh the minority class
+table(PimaIndiansDiabetes$diabetes)[1]/table(PimaIndiansDiabetes$diabetes)
+
+cw = c("neg" = sum(PimaIndiansDiabetes$diabetes == 'neg')/length(PimaIndiansDiabetes$diabetes), "pos" = 1)
+rf = randomForest(as.factor(diabetes) ~ ., data = (PimaIndiansDiabetes[tidx, ]), nodesize = 20, ntree = 50, classwt = cw)
+#test data for rf
+table(as.factor(PimaIndiansDiabetes$diabetes[-tidx]), predict(object = rf, newdata = PimaIndiansDiabetes[-tidx, ], type = 'class'))
+#how to combat imbalanced sets, the minority ones have a higher weight. When it creates the bootstrap samples it will up sample in the minorities. Can be done manually but then you have to create an up sample data frame
+cw[1] = 1.25
+
+rf #lost accuracy in predicting negatives but gained in positives prediction . Go back to your original question and where do you need to be more sensitive.  We want to predict diabetics we are better to predict normal people to be diabetics to send them for screening. Better to have a false positive go for test and rule them out. False negative we miss a diagnosis. 
+
+#look at the test as well as train. 
+#assignment- train and test has already been figured out. Use the train and test given to you 
+
+
+############################ Generating hyperparameter grid ######################
+
+
+####### ############################ to try later #####################
+# RF splitting criteria on glucose. Change name of variable to try with other splits 
+
+#entropy
+repEn <- function(k) {
+  t1 = sum(table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose > k]))
+  t2 = sum(table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose <= k]))
+  en1 = entropy(table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose > k]), unit = 'log2')
+  en2 = entropy(table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose <= k]), unit = 'log2')
+  return((en1*t1/(t1+t2)) + (en2*t2/(t1+t2)))
+}
+
+#gini, change the $ sign variable to see what happens. Glucose should always be the best ones. 
+repGini <- function(k) {
+  t1 = sum(table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose > k]))
+  t2 = sum(table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose <= k]))
+  en1 = 1 - sum((table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose > k])/t1)**2)
+  en2 = 1 - sum((table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose <= k])/t2)**2)
+  return((en1*t1/(t1+t2)) + (en2*t2/(t1+t2)))
+}
+
+#chi
+repChiSq <- function(k) {
+  ta = table(PimaIndiansDiabetes$diabetes)/nrow(PimaIndiansDiabetes)
+  en1 = chisq.test(table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose > k]), p = ta)
+  en1 = sum(sqrt((en1$observed - en1$expected)^2/en1$expected))
+  en2 = chisq.test(table(PimaIndiansDiabetes$diabetes[PimaIndiansDiabetes$glucose <= k]), p = ta)
+  en2 = sum(sqrt((en2$observed - en2$expected)^2/en2$expected))
+  return(en1+en2)
+}
+
